@@ -1,0 +1,833 @@
+//////////////////////////////////Entity
+package com.yazlab21.model;
+
+import javax.persistence.*;
+import javax.validation.constraints.NotEmpty;
+import java.util.Set;
+
+@Entity
+@Table(name = "book")
+public class Book {
+    @Id
+    @GeneratedValue(strategy = GenerationType.IDENTITY)
+    private Long id;
+
+    @Column(name = "bookname", unique = true)
+    @NotEmpty(message = "Book name cannot be empty.")
+    private String bookname;
+
+    @Column(name = "isbnnumber", unique = true)
+    @NotEmpty(message = "Isbn number cannot be empty.")
+    private String isbnnumber;
+
+    private String state;
+
+    public String getState() { return state; }
+
+    public void setState(String state) { this.state = state; }
+
+    public Long getId() { return id; }
+
+    public void setId(Long id) { this.id = id; }
+
+    public String getBookname() { return bookname; }
+
+    public void setBookname(String bookname) { this.bookname = bookname; }
+
+    public String getIsbnnumber() { return isbnnumber; }
+
+    public void setIsbnnumber(String isbnnumber) { this.isbnnumber = isbnnumber; }
+
+}
+
+
+
+package com.yazlab21.model;
+
+import javax.persistence.*;
+import javax.validation.constraints.NotEmpty;
+import java.util.Set;
+
+@Entity
+@Table(name = "user")
+public class User {
+
+    @Id
+    @GeneratedValue(strategy = GenerationType.IDENTITY)
+    private Long id;
+
+    private String username;
+
+    private String password;
+
+    private Integer bcount;
+
+    @Column(name = "authority")
+    @NotEmpty(message = "*Please provide your authority")
+    private String authority;
+
+    @Transient
+    private String passwordConfirm;
+
+    @ManyToMany
+    private Set<Role> roles;
+
+    @ManyToMany
+    private Set<Book> books;
+
+    public Integer getBcount() { return bcount; }
+
+    public void setBcount(Integer bcount) { this.bcount = bcount; }
+
+    public Long getId() {
+        return id;
+    }
+
+    public void setId(Long id) {
+        this.id = id;
+    }
+
+    public String getUsername() {
+        return username;
+    }
+
+    public void setUsername(String username) {
+        this.username = username;
+    }
+
+    public String getPassword() {
+        return password;
+    }
+
+    public void setPassword(String password) {
+        this.password = password;
+    }
+
+    public String getPasswordConfirm() {
+        return passwordConfirm;
+    }
+
+    public void setPasswordConfirm(String passwordConfirm) {
+        this.passwordConfirm = passwordConfirm;
+    }
+
+    public Set<Role> getRoles() {
+        return roles;
+    }
+
+    public void setRoles(Set<Role> roles) {
+        this.roles = roles;
+    }
+
+    public String getAuthority() { return authority; }
+
+    public void setAuthority(String authority) { this.authority = authority; }
+}
+
+
+
+
+
+package com.yazlab21.service;
+
+import com.yazlab21.model.Book;
+import net.sourceforge.tess4j.Tesseract;
+import net.sourceforge.tess4j.TesseractException;
+import org.springframework.stereotype.Service;
+
+import java.text.ParseException;
+import java.util.List;
+import java.util.Optional;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
+
+@Service
+public interface BookService {
+
+    void save(Book book);
+
+    List<Book> listBooksOfUser(Long userId);
+
+    void search(Book book);
+
+
+    Tesseract getTesseract();
+    String recognizeImage(String path) throws TesseractException;
+
+
+    Book findByBookname(String bookname);
+    Book findByIsbnnumber(String isbnnumber);
+
+
+}
+
+
+
+
+
+package com.yazlab21.service;
+
+import boofcv.alg.filter.binary.GThresholdImageOps;
+import boofcv.alg.misc.ImageStatistics;
+import boofcv.gui.ListDisplayPanel;
+import boofcv.gui.binary.VisualizeBinaryData;
+import boofcv.gui.image.ShowImages;
+import boofcv.io.image.ConvertBufferedImage;
+import boofcv.io.image.UtilImageIO;
+import boofcv.struct.image.GrayF32;
+import boofcv.struct.image.GrayU8;
+import com.yazlab21.model.Book;
+import com.yazlab21.repository.BookDao;
+import com.yazlab21.repository.BookRepository;
+import net.sourceforge.tess4j.Tesseract;
+import net.sourceforge.tess4j.TesseractException;
+import org.opencv.core.Core;
+import org.opencv.core.Mat;
+import org.opencv.highgui.Highgui;
+import org.opencv.imgproc.Imgproc;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.stereotype.Service;
+
+import java.awt.image.BufferedImage;
+import java.io.File;
+import java.text.ParseException;
+import java.util.List;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
+
+import static org.opencv.highgui.Highgui.imread;
+import static org.opencv.highgui.Highgui.imwrite;
+import static org.opencv.imgproc.Imgproc.COLOR_BGR2GRAY;
+import static org.opencv.imgproc.Imgproc.cvtColor;
+
+@Service
+public class BookServiceImpl implements BookService {
+
+    private static final int IMREAD_GRAYSCALE = 1;
+    private static final int ADAPTIVE_THRESH_MEAN_C = 0;
+    private static final int THRESH_BINARY = 1;
+    // Source path content images
+
+
+    Tesseract tesseract = getTesseract();
+
+    @Autowired
+    private BookRepository bookRepository;
+
+    @Autowired
+    BookDao bookDao;
+
+    @Override
+    public void save(Book book) {
+        book.setBookname(book.getBookname());
+        book.setIsbnnumber(book.getIsbnnumber());
+        bookRepository.save(book);
+    }
+
+    @Override
+    public List<Book> listBooksOfUser(Long userId) {
+
+        List<Book> books =bookDao.getBookByUserId(userId);
+        return books;
+    }
+
+    @Override
+    public void search(Book book) {
+
+    }
+
+
+    @Override
+    public Tesseract getTesseract() {
+        Tesseract instance = new Tesseract();
+        instance.setDatapath("C:\\Users\\berkd\\Desktop\\Tess\\tessdata");
+        instance.setLanguage("eng");
+        return instance;
+    }
+
+    String extractTextFromImage(Mat inputMat) {
+        String result = "";
+        Mat gray = new Mat();
+
+        // Convert to gray scale
+        cvtColor(inputMat, gray, COLOR_BGR2GRAY);
+        imwrite("C:\\Users\\berkd\\Desktop\\kisisel\\" + "gray.png", gray);
+
+        Mat threshold= imread("C:\\Users\\berkd\\Desktop\\kisisel\\gray.png", IMREAD_GRAYSCALE);
+        Mat result1 = new Mat();
+        adaptiveThreshold(gray, result1);
+
+
+        try {
+            // Recognize text with OCR
+            result = tesseract.doOCR(new File("C:\\Users\\berkd\\Desktop\\kisisel\\" + "gray.png"));
+        } catch (TesseractException e) {
+            e.printStackTrace();
+        }
+
+        return result;
+    }
+
+
+    @Override
+    public String recognizeImage(String path) throws TesseractException {
+
+            String[] pars;
+
+            String result = tesseract.doOCR(new File("C:\\Users\\berkd\\Desktop\\kisisel\\" + path));
+            result =result.replace("-","");
+            result =result.replace(" ","");
+            result =result.replace("|","");
+            pars=result.split("\n");
+            result=pars[0];
+            result =result.replace("ISBN","");
+            result =result.replace("li","");
+            //result=regexChecker("[0-9]{1,13}",result);
+            System.out.println("555555555555555555555555"+result);
+
+
+            return result;
+    }
+
+
+
+
+
+    private void adaptiveThreshold(Mat gray, Mat result) {
+        //Imgproc.adaptiveThreshold(imgGray, imgThreshold, 255, Imgproc.ADAPTIVE_THRESH_GAUSSIAN_C, Imgproc.THRESH_BINARY, 11, 2);
+        //Imgproc.adaptiveThreshold(mat, binary, 255, Imgproc.ADAPTIVE_THRESH_GAUSSIAN_C, Imgproc.THRESH_BINARY, 51, 13);
+        //Imgproc.adaptiveThreshold(gray, result, 255, Imgproc.ADAPTIVE_THRESH_GAUSSIAN_C, Imgproc.THRESH_BINARY, 51, 13);
+        //imwrite("adaptive2.png", result);
+    }
+
+
+    @Override
+    public Book findByBookname(String bookname) { return bookRepository.findByBookname(bookname); }
+
+    @Override
+    public Book findByIsbnnumber(String isbnnumber) { return bookRepository.findByIsbnnumber(isbnnumber); }
+
+    public static String regexChecker(String theRegex, String str2Check){
+
+        String Holder = "";
+        Pattern checkRegex = Pattern.compile(theRegex);
+
+        Matcher regexMatcher = checkRegex.matcher( str2Check );
+
+        while ( regexMatcher.find() ){
+            if (regexMatcher.group().length() != 0){
+                Holder = regexMatcher.group().trim();
+            }
+        }
+        return Holder;
+    }
+}
+
+
+
+package com.yazlab21.service;
+
+import com.yazlab21.model.User;
+import org.springframework.stereotype.Service;
+
+import java.util.List;
+
+@Service
+public interface UserService {
+
+    void save(User user);
+    User createUser(Long id, String username, String password);
+
+    User findByUsername(String username);
+
+    List<User> listUsers();
+}
+
+
+
+
+
+package com.yazlab21.service;
+
+import com.yazlab21.model.User;
+import com.yazlab21.repository.RoleRepository;
+import com.yazlab21.repository.UserDao;
+import com.yazlab21.repository.UserRepository;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
+import org.springframework.stereotype.Service;
+
+import java.util.HashSet;
+import java.util.List;
+
+
+@Service
+public class UserServiceImpl implements UserService {
+
+
+    @Autowired
+    private UserRepository userRepository;
+    @Autowired
+    private RoleRepository roleRepository;
+    @Autowired
+    private BCryptPasswordEncoder bCryptPasswordEncoder;
+    @Autowired
+    private UserDao userDao;
+
+    @Override
+    public User createUser(Long id, String username, String password) {
+        User user = new User();
+
+        user.setId(id);
+        user.setUsername(username);
+        user.setPassword(password);
+        user.setAuthority("User");
+
+        // TODO Auto-generated method stub
+        return userDao.createUser(user);
+    }
+
+    @Override
+    public List<User> listUsers() {
+        return userDao.findAll();
+    }
+
+    @Override
+    public void save(User user) {
+        user.setPassword(bCryptPasswordEncoder.encode(user.getPassword()));
+        user.setRoles(new HashSet<>(roleRepository.findAll()));
+        userRepository.save(user);
+    }
+
+    @Override
+    public User findByUsername(String username) {
+        return userRepository.findByUsername(username);
+    }
+}
+
+
+
+
+
+
+
+
+
+
+
+
+
+package com.yazlab21.web;
+
+import com.yazlab21.errors.Err;
+import com.yazlab21.model.Book;
+import com.yazlab21.model.User;
+import com.yazlab21.model.UserBookCart;
+import com.yazlab21.repository.BookRepository;
+import com.yazlab21.repository.UserRepository;
+import com.yazlab21.service.*;
+import com.yazlab21.validator.UserValidator;
+import net.sourceforge.tess4j.TesseractException;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.stereotype.Controller;
+import org.springframework.ui.Model;
+import org.springframework.ui.ModelMap;
+import org.springframework.validation.BindingResult;
+import org.springframework.web.bind.annotation.*;
+import org.springframework.web.multipart.MultipartFile;
+import org.springframework.web.servlet.ModelAndView;
+
+import javax.servlet.http.HttpServletRequest;
+import javax.servlet.http.HttpServletResponse;
+import java.text.ParseException;
+import java.util.List;
+
+@Controller
+public class UserController {
+    @Autowired
+    private UserService userService;
+
+    @Autowired
+    private SecurityService securityService;
+
+    @Autowired
+    private UserValidator userValidator;
+
+    @Autowired
+    private BookService bookService;
+
+    @Autowired
+    private UserRepository userRepository;
+
+    @Autowired
+    private BookRepository bookRepository;
+
+    @Autowired
+    private UserBookCartService ubcService;
+
+    @Autowired
+    private UserBookService ubService;
+
+    public UserController(UserRepository userRepository) {
+        this.userRepository = userRepository;
+    }
+
+    @RequestMapping(value = "/user", method = RequestMethod.POST)
+    public Object createUser(@RequestParam Long id,
+                               @RequestParam String username,
+                               @RequestParam String password,
+                               ModelMap model,
+                               HttpServletRequest request,
+                               HttpServletResponse response) {
+        ModelAndView mv = new ModelAndView("users/userDashboard");
+        User uEntity = userService.createUser(id, username, password);
+        String usertype = uEntity.getAuthority();
+        System.out.println("Usertrpe " + usertype);
+        mv.addObject("userId", uEntity.getId());
+        if (usertype.equals("User")) {
+            return "librarian/dashboard";
+        }
+        System.out.println("user id " + uEntity.getId());
+        return mv;
+    }
+
+    @RequestMapping(value = "/user/{userId}/dashboard", method = RequestMethod.GET)
+    public Object userDashboard(@PathVariable Long userId,
+                                ModelMap model,
+                                HttpServletRequest request,
+                                HttpServletResponse response) {
+
+        ModelAndView mv = new ModelAndView("users/userDashboard");
+        mv.addObject("userId", userId);
+        return mv;
+    }
+
+    @RequestMapping(value = "/user/showall", method = RequestMethod.GET)
+    public Object showAll() {
+        ModelAndView mv = new ModelAndView("userlist");
+        List<User> users = userService.listUsers();
+        System.out.println(users.get(0).toString());
+        mv.addObject("users", users);
+        return mv;
+    }
+
+    /*@RequestMapping(value = "/user/{userId}/books", method = RequestMethod.GET)
+    public Object showBooks(@PathVariable("userId") long userId,
+                            ModelMap model,
+                            HttpServletRequest request,
+                            HttpServletResponse response) {
+        ModelAndView mv = new ModelAndView("books/userBookList");
+        List<Book> books = bookService.listBooksOfUser(userId);
+        if (books.size() < 1)
+            mv.addObject("errorMessage", "No Books");
+        mv.addObject("userId", userId);
+        mv.addObject("books", books);
+        return mv;
+    }
+
+    @RequestMapping(value = "/user/{userId}/books/{bookId}", method = RequestMethod.GET)
+    public Object addBookToUserCart(@PathVariable("userId") long userId,
+                                    @PathVariable("bookId") long bookId, ModelAndView modelAndView) throws ParseException {
+        Err err = ubcService.addUserBookToCart(new UserBookCart(userId, bookId, 0));
+        String addToCartStatus;
+        if (err.isAnError()) {
+            addToCartStatus = err.getMessage();
+
+        } else {
+            addToCartStatus = "Book added to cart";
+        }
+        modelAndView.addObject("addtocartstatus", addToCartStatus);
+        modelAndView.setViewName("books/listCartBooks");
+        modelAndView.addObject("userId", userId);
+        modelAndView.addObject("status", addToCartStatus);
+        modelAndView.addObject("checkouturl", "checkout");
+        List<Book> books = ubcService.getUserBooks(userId, false);
+        modelAndView.addObject("books", books);
+        return modelAndView;
+    }
+
+    @RequestMapping(value = "/user/{userId}/checkout", method = RequestMethod.GET)
+    public Object requestBooks(@PathVariable("userId") long userId) throws ParseException {
+        StringBuilder emailSummary = new StringBuilder();
+        emailSummary.append("Book checkout Summary!" + "\n");
+        ModelAndView mv = new ModelAndView("books/request");
+        List<UserBookCart> cart = ubcService.getUserCart(userId, false);
+        if (cart.size() == 0) {
+            mv.addObject("status", "Cart is Empty. Nothing to checkout");
+            return mv;
+        }
+        List<Book> currBooks = bookService.listBooksOfUser(userId);
+        if (currBooks.size() + cart.size() > 10) {
+            mv.addObject("status", "Maximum 10 books can be issued at a time. Must return a book or remove from cart to issue new.");
+            return mv;
+        }
+
+        int userDayBookCount = ubService.getUserDayBookCount(userId);
+        if (userDayBookCount + cart.size() > 5) {
+            mv.addObject("status", "Maximum 5 books can be issued in a day. Must return a book or remove from cart today or try tomorrow");
+            return mv;
+        }
+
+        boolean isWaitlisted = false;
+        for (UserBookCart u : cart) {
+            String status = bookService.requestBook(u.getBook_id(), userId);
+            if (status.contains("wait")) {
+                isWaitlisted = true;
+            }
+            emailSummary.append(status);
+            emailSummary.append("\n");
+        }
+
+        mv.addObject("status", emailSummary);
+        //sends consolidated email of checkout
+        eMail.sendMail(uService.findUser(userId).getUseremail(), "Your LMS Checkout Summary", emailSummary.toString());
+        String returnStatus = "Transaction successful! ";
+        // if (isWaitlisted) returnStatus += "Some books were waitlisted. ";
+        returnStatus += "You will get details in email soon !";
+        mv.addObject("status", returnStatus);
+        ubcService.clearUserCart(userId, false);
+        return mv;
+    }*/
+
+
+
+    @GetMapping("/admin")
+    public String admin(User userForm) {
+            return "admin";
+    }
+
+
+
+    @GetMapping("/addbook")
+    public String addbook(Model model) {
+        model.addAttribute("bookForm", new Book());
+
+        return "addbook";
+    }
+
+    @GetMapping("/getbook")
+    public String getbook(Model model) {
+        model.addAttribute("bookForm", new Book());
+
+        return "getbook";
+    }
+
+    @GetMapping("/givebook")
+    public String givebook(Model model) {
+        model.addAttribute("stateForm", new Book());
+        model.addAttribute("message", "The book refund is successful.");
+
+        return "givebook";
+    }
+
+    @PostMapping("/givebook")
+    public String givebook(@ModelAttribute("stateForm") Book stateForm, BindingResult bindingResult) throws TesseractException {
+
+        if (bindingResult.hasErrors()) { return "givebook"; }
+
+        bookService.getTesseract();
+        if(bookRepository.findByIsbnnumber(bookService.recognizeImage(stateForm.getIsbnnumber()))!=null){
+            stateForm.setState("PASSIVE");
+        }
+
+        // return "redirect:/welcome";
+        return "givebook";
+    }
+
+    @PostMapping("/addbook")
+    public String addbook(@ModelAttribute("bookForm") Book bookForm, BindingResult bindingResult) throws TesseractException {
+
+        if (bindingResult.hasErrors()) { return "addbook"; }
+
+        bookService.getTesseract();
+        bookForm.setIsbnnumber(bookService.recognizeImage(bookForm.getIsbnnumber()));
+        bookForm.setState("PASSIVE");
+        bookService.save(bookForm);
+
+        // return "redirect:/welcome";
+        return "addbook";
+    }
+
+
+    @GetMapping({"/", "/welcome"})
+    public String welcome(Model model) { return "welcome"; }
+
+
+    @GetMapping("/userlist")
+    public String userlist(Model model){
+        model.addAttribute("listForm", new User());
+        List<User> userlist=userRepository.findAll();
+        model.addAttribute("userlist",userlist);
+
+        return "userlist";
+    }
+
+    @GetMapping("/searchbook")
+    public String searchbook(Model model) {
+        model.addAttribute("searchForm", new Book());
+
+        return "searchbook";
+    }
+
+    @PostMapping("/searchbook")
+    public String searchbook(@ModelAttribute("searchForm")String searchForm) {
+
+        Book book=new Book();
+        if(bookRepository.findByIsbnnumber(searchForm)!=null || bookRepository.findByBookname(searchForm)!=null){
+            return "welcome";
+        }
+        else
+            return "searchbook";
+    }
+
+    @GetMapping("/timelaps")
+    public String timelaps(Model model) {
+        model.addAttribute("bookForm", new Book());
+
+        return "timelaps";
+    }
+
+    @RequestMapping(value = "/user/{userId}/books", method = RequestMethod.GET)
+    public Object showBooks(@PathVariable("userId") Long userId,
+                            ModelMap model,
+                            HttpServletRequest request,
+                            HttpServletResponse response) {
+        ModelAndView mv = new ModelAndView("books/userBookList");
+        List<Book> books = bookService.listBooksOfUser(userId);
+        if (books.size() < 1)
+            mv.addObject("errorMessage", "No Books");
+        mv.addObject("userId", userId);
+        mv.addObject("books", books);
+        return mv;
+    }
+
+     @PostMapping("/userlist")
+    public String userlist(@ModelAttribute("listForm") User listForm, BindingResult bindingResult) {
+
+        if (bindingResult.hasErrors()) { return "userlist"; }
+
+
+        //bookService.save(bookForm);
+
+        // return "redirect:/welcome";
+        return "userlist";
+    }
+
+}
+
+
+
+
+
+
+package com.yazlab21.web;
+
+import com.yazlab21.model.User;
+import com.yazlab21.service.UserService;
+import com.yazlab21.validator.UserValidator;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.context.ApplicationEventPublisher;
+import org.springframework.context.annotation.EnableAspectJAutoProxy;
+import org.springframework.scheduling.annotation.EnableScheduling;
+import org.springframework.stereotype.Component;
+import org.springframework.stereotype.Controller;
+import org.springframework.ui.Model;
+import org.springframework.validation.BindingResult;
+import org.springframework.web.bind.annotation.*;
+import org.springframework.web.servlet.ModelAndView;
+
+import javax.servlet.ServletContext;
+import javax.servlet.http.HttpServletRequest;
+import javax.validation.Valid;
+
+@Component
+@Controller
+@EnableAspectJAutoProxy
+@EnableScheduling
+public class RegistrationController {
+
+    @Autowired
+    ApplicationEventPublisher applicationEventPublisher;
+
+    @Autowired
+    UserService userService;
+
+    @Autowired
+    ServletContext servletContext;
+
+    @Autowired
+    private UserValidator userValidator;
+
+
+    @RequestMapping(value = "/")
+    public ModelAndView landingPage() {
+
+        return new ModelAndView("redirect:/register");
+    }
+
+    @GetMapping("/registration")
+    public String registration(Model model) {
+        model.addAttribute("userForm", new User());
+
+        return "registration";
+    }
+
+    @PostMapping("/registration")
+    public String registration(@ModelAttribute("userForm") User userForm, BindingResult bindingResult) {
+        userValidator.validate(userForm, bindingResult);
+
+        if (bindingResult.hasErrors()) {
+            return "registration";
+        }
+        userForm.setAuthority("User");
+        userService.save(userForm);
+
+        //securityService.autoLogin(userForm.getUsername(), userForm.getPasswordConfirm());
+
+        // return "redirect:/welcome";
+        return "login";
+    }
+
+    @GetMapping("/login")
+    public String login(Model model,User userLoginForm, String error, String logout) {
+        if (error != null)
+            model.addAttribute("error", "Your username and password is invalid.");
+
+        if (logout != null)
+            model.addAttribute("message", "You have been logged out successfully.");
+
+        return "login";
+    }
+}
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
